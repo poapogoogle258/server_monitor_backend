@@ -1,102 +1,39 @@
 const express = require("express");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
+const cors = require('cors')
 
+const send_message = require('./line_massage')
 
 const app = express();
+const api = require('./conrtrollers')
 const httpServer = createServer(app);
-const cors = require('cors')
 
 
 //use json
 app.use(cors())
 app.use(express.json())
-
-const io = new Server(httpServer,{
-  cors: {
-    origin: "http://localhost:3001",
-    methods: ["GET", "POST"]
-  }
-})
-
-var status_now_computer = {}
-
-var haveSenderMessage = false
-
-
-const mongoose = require('mongoose')
-const history_resource = require('./Model/history');
-
+app.use(api)
 
 //connect database 
+const history_resource = require('./Model/history');
+const mongoose = require('mongoose')
 mongoose.connect('mongodb://localhost:27017/history_resource',{
     useNewUrlParser: true 
 })
 
-
-//send
-const send_message = (message) => {
-  var axios = require('axios');
-  var qs = require('qs');
-  var data = qs.stringify({
-    'message': message 
-  });
-  var config = {
-    method: 'post',
-    url: 'https://notify-api.line.me/api/notify',
-    headers: { 
-      'Authorization': 'Bearer B6yPj7gOCjsVuhn9MhZjbYgqwwcnM3AxrQRhDtt3MvU', 
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    data : data
-  };
-
-  axios(config)
-  .then(function (response) {
-    console.log(JSON.stringify(response.data));
-  })
-  .catch(function (error) {
-    console.log(error);
-  });
-
-  console.log('sended message')
-}
-
-
-// api _
-app.get(`/api/status`,async (req,res) => {
-  res.json(Object.values(status_now_computer).map(status => {
-    return {
-      ...status.status_last,
-      'connected' : (status.socket === undefined)? false : status.socket.connected
-    }
-  }))
-})
-
-app.get(`/api/history`,async (req,res) => {
-  const history = await history_resource.find()
-  res.json(history)
-})
-
-//api get historys
-app.get(`/api/history/:file`,async function(req , res){
-  const {file} = req.params
-
-  const {existsSync} = require('fs')
-  const check_exis_file = await existsSync(`historys/${file}.json`)
-  
-  if(check_exis_file){
-    const { readFile } = require('fs/promises');
-    const read_history = await readFile(`historys/${file}.json`)
-    const data = JSON.parse(read_history)
-    res.json(data)
-  }
-  else{
-    return res.status(500).json({
-      status: "Not Found"
-    });
+//create socket servers
+const io = new Server(httpServer,{
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+    credentials:true
   }
 })
+
+var status_now_computer = {}
+var haveSenderMessage = false
+
 
 io.on("connection", async (socket) => {  
   socket.on('send_status', function(playload){
@@ -123,15 +60,14 @@ io.on("connection", async (socket) => {
 
     const data = await history_resource.find()
 
-    const status_dits = {}
-    for (let key in status_now_computer){
-      status_dits[key] = status_now_computer[key].status_last
-      status_dits[key].connected = (status_now_computer[key].socket === undefined)? false : status_now_computer[key].socket.connected
-    }
-
     //callback
     fn({
-      status : status_dits,
+      status : status_now_computer.map(computer => {
+        return {
+          ...computer.status_last,
+          'connected' : computer.connected
+        }
+      }),
       history : data
     })
 
@@ -178,10 +114,12 @@ io.on("connection", async (socket) => {
 
         io.to("status").emit('loging',computer_disconnect)
           
-          // send_message(`host ${status_now_computer[key].status_last.host} Down...`)
+        send_message(`host ${status_now_computer[key].status_last.host} Down...`)
       }
     }
   });
+
+
 });
 
 
@@ -193,7 +131,7 @@ cron.schedule('50 59 23 * * *',async function(){
 
   const today = new Date().toISOString().slice(0, 10)
   const data_to_day = await history_resource.find()
-  const monify_data = await data_to_day.map(item => {
+  const monify_data = data_to_day.map(item => {
     return {
       host: item.host,
       cpu: item.cpu,
@@ -210,9 +148,8 @@ cron.schedule('50 59 23 * * *',async function(){
 })
 
 
-httpServer.listen(3000,async () =>{
+httpServer.listen(3000,() =>{
   console.log('Application is running on port 3000')
-  // console.log('checking status computer')
 });
 
 
