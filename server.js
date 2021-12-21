@@ -15,6 +15,16 @@ app.use(cors())
 app.use(express.json())
 app.use(api)
 
+//api get status lasted
+app.get(`/api/status`,async (req,res) => {
+  res.json(Object.values(status_now_computer).map(status => {
+    return {
+      ...status.status_last,
+      'connected' : (status.socket === undefined)? false : status.socket.connected
+    }
+  }))
+})
+
 //connect database 
 const history_resource = require('./Model/history');
 const mongoose = require('mongoose')

@@ -9,14 +9,6 @@ mongoose.connect('mongodb://localhost:27017/history_resource',{
 
 
 // api _
-router.get(`/api/status`,async (req,res) => {
-    res.json(Object.values(status_now_computer).map(status => {
-      return {
-        ...status.status_last,
-        'connected' : (status.socket === undefined)? false : status.socket.connected
-      }
-    }))
-  })
   
 router.get(`/api/history`,async (req,res) => {
     const history = await history_resource.find()
